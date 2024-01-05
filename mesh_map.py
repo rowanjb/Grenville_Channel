@@ -1,4 +1,5 @@
-#simple throwaway script making maps of data 
+#Script for creating plot(s) of the two meshes (kit500 and grc100)
+#Rowan Brown, 5 Jan 2024
 
 import xarray as xr
 import LSmap 
