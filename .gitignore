@@ -5,6 +5,3 @@
 !kit500_map.png
 !grc100_map.png
 !mesh_map.py
-
-#...and also consider files in sub-directories
-!*/
