@@ -2,7 +2,6 @@
 #Rowan Brown, 5 Jan 2024
 
 import xarray as xr
-import LSmap 
 import numpy as np 
 import math
 import os
@@ -32,9 +31,10 @@ def mesh_map():
 	#colour map
 	cm = 'viridis'
 
-	#meshes to plot
+	#meshes to plot below
 	meshes = ['grc100', 'kit500']
 
+	#loops to create subplots (i.e., two maps in the same figure)
 	for i,(mesh,ax) in enumerate(zip(meshes,axs)):
 
 		#define map dimensions (using Plate Carree coordinate system)
