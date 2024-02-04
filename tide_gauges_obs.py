@@ -34,11 +34,12 @@ def tide_gauges():
 
 		#extending the 2014 Lowe Inlet data forward to match the other data
 		wt = pytide.WaveTable()
-		time = df['LoweInlet_date'].dropna().to_numpy()
+		time2014 = df['LoweInlet_date'].dropna().to_numpy()
+		time2020 = df['HartleyBay_date'].dropna().to_numpy()
 		h = df['LoweInlet_val'].dropna().to_numpy()
-		f, vu = wt.compute_nodal_modulations(time)
+		f, vu = wt.compute_nodal_modulations(time2014)
 		w = wt.harmonic_analysis(h, f, vu)
-		hp = wt.tide_from_tide_series(df['HartleyBay_date'].dropna().to_numpy(), w) #can change the time if you want!!
+		hp = wt.tide_from_tide_series(time2014, w) #can change the time if you want!!
 
 		#IGNORE THIS SECTION
 		#wtM2 = pytide.WaveTable(["M2"])
@@ -50,19 +51,19 @@ def tide_gauges():
 		fig,ax1 = plt.subplots()
 		
 		#tide gauge data
-		df.plot(x='PrinceRupert_date', y='PrinceRupert_val', ax=ax1, color=c1, label='Prince Rupert observed')
-		df.plot(x='HartleyBay_date', y='HartleyBay_val', ax=ax1, color=c2, label='Hartley Bay observed')
-		#df.plot(x='LoweInlet_date', y='LoweInlet_val', ax=ax1, color=c3, label='Lowe Inlet observed')
+		##df.plot(x='PrinceRupert_date', y='PrinceRupert_val', ax=ax1, color=c1, label='Prince Rupert observed')
+		##df.plot(x='HartleyBay_date', y='HartleyBay_val', ax=ax1, color=c2, label='Hartley Bay observed')
+		df.plot(x='LoweInlet_date', y='LoweInlet_val', ax=ax1, color=c1, label='Lowe Inlet observed')
 
 		#modelled tides
-		ax1.plot(df['HartleyBay_date'].dropna().to_numpy(),hp,color=c1,label='Lowe Inlet harmonic model') #can change the time, so long as it is the same as when you made hp
+		ax1.plot(time2014,hp,color=c3,label='Lowe Inlet harmonic model') #can change the time, so long as it is the same as when you made hp
 
 		ax1.legend()
-		ax1.set_title('Grenville Channel tides, mid-2020')
+		ax1.set_title('Grenville Channel tides, mid-2014')
 		ax1.set_ylabel('SSH')
 		ax1.set_xlabel('Date')
 		#ax1.set_xlim([date(2020, 1, 1), date(2020, 1, 7)])
-		ax1.set_xlim([date(2020, 6, 1), date(2020, 6, 7)])
+		ax1.set_xlim([date(2014, 6, 1), date(2014, 6, 7)])
 
 		fig.savefig('plots/tide_gauges_2020.png',dpi=300, bbox_inches="tight")
 		fig.clf()
