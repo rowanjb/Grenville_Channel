@@ -12,6 +12,9 @@ import cartopy.feature as feature
 import matplotlib.ticker as mticker
 import matplotlib.colors as colors
 
+#useful colours for plotting
+c1, c2, c3 = plt.cm.viridis([0, 0.5, 0.8])
+
 def mesh_map():
 
 	#== setting up the map ==#
@@ -61,9 +64,24 @@ def mesh_map():
 		#plotting meshes
 		p = ax.pcolormesh(DS.nav_lon, DS.nav_lat, tmask, transform=ccrs.PlateCarree(), vmin=0, vmax=1, cmap=cm)
 
+		transform = ccrs.PlateCarree()._as_mpl_transform(ax)
+		
+		ax.plot(-129.2535, 53.4329, 'o', color='black', transform=ccrs.PlateCarree())
+		ax.plot(-129.2535, 53.4329, '.', color='white', transform=ccrs.PlateCarree())
+		
+		ax.plot(-129.5799, 53.5553, 'o', color='black', transform=ccrs.PlateCarree())
+		ax.plot(-129.5799, 53.5553, '.', color='white', transform=ccrs.PlateCarree())
+
+		ax.plot(-130.3208, 54.3150, 'o', color='black', transform=ccrs.PlateCarree())
+		ax.plot(-130.3208, 54.3150, '.', color='white', transform=ccrs.PlateCarree())
+
+		ax.annotate('Hartley\nBay', xy=(-129.2535, 53.4329),xytext=(-128.75, 53),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
+		ax.annotate('Lowe Inlet', xy=(-129.5799, 53.5553),xytext=(-128.75, 53.75),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
+		ax.annotate('Prince Rupert', xy=(-130.3208, 54.3150),xytext=(-129.3, 54.25),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
+
 		#title
 		ax.set_title(mesh)
-
+		
 	#overall title
 	fig.suptitle('Comparing mesh sizes around Grenville Channel',y=0.88)
 
