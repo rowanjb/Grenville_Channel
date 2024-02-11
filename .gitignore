@@ -1,6 +1,8 @@
 # Ignore everything
 * 
-*.png #emph: don't include figs
+*/*.png #emph: don't include figs
+*/*.txt #...and also txt files
+*/*.csv #...and csv files
 
 # But not these files...
 !mesh_map.py
