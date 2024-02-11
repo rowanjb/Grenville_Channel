@@ -3,8 +3,9 @@
 #Rowan Brown
 #11 Feb 2024
 
-import xarray as xr
+#import xarray as xr
 import os
+import csv 
 
 def filepaths(): 
 
@@ -30,9 +31,9 @@ def filepaths():
 	#saving the filepath lists
 	for suffix in suffixes:
 		filepaths_to_save = [filepath for filepath in grc_filepaths if filepath.endswith(suffix)]
-		with open('filepaths/grc_filepaths_' + suffix[:-3] + '.txt', 'w') as output:
-			for filepath in filepaths_to_save:
-				output.write(str(filepath) + '\n')
+		with open('filepaths/grc_filepaths_' + suffix[:-3] + '.csv', 'w', newline='') as output:
+			write = csv.writer(output, quoting=csv.QUOTE_ALL)
+			write.writerow(filepaths_to_save)
 
 if __name__ == '__main__':
 	filepaths()
