@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 from datetime import datetime, date
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pytide
 
@@ -52,7 +53,7 @@ def get_tide_gauge_obs():
 	print('Done; obs data has been read and harmonic analysis has been completed')
 	return df
 
-def find_nearest_model_ids(gauge_location): 
+def find_nearest_model_ids(gauge_location,model): 
 	'''Searches for model nav_lat and nav_lon coords that are nearest the tide gauges.
 	Acceptable inputs: "Lowe_Inlet", "Hartley_Bay", or "Prince_Rupert".
 	(Although note that Prince Rupert isn't on the grc100 grid.)
@@ -66,12 +67,18 @@ def find_nearest_model_ids(gauge_location):
 	#opening a random model file in order to get the nav_lon and nav_lat coordinates
 	grc_filepaths_txt = 'filepaths/' + 'grc_filepaths_1h_grid_T_2D.csv'
 	grc_filepaths = list(pd.read_csv(grc_filepaths_txt))
-	ds = xr.open_dataset(grc_filepaths[0])
+	ds = xr.open_dataset(grc_filepaths[0]).isel(time_counter=10)
+	
+	#zeroing coordinates where zos is nan; will stop the "nearest coordinate" from being in land
+	#ds = ds.assign_coords({"nav_lon": xr.where(~np.isnan(ds.zos),ds.nav_lon,0)})
+	#ds = ds.assign_coords({"nav_lat": xr.where(~np.isnan(ds.zos),ds.nav_lat,0)})
+	nav_lat = xr.where(~np.isnan(ds.zos),ds.nav_lat,0)
+	nav_lon = xr.where(~np.isnan(ds.zos),ds.nav_lon,0)
 
 	#finds indices of the grid points nearest a given location  
 	def shortest_distance(lat,lon):
-		abslat = np.abs(ds.nav_lat.to_numpy()-lat)
-		abslon = np.abs(ds.nav_lon.to_numpy()-lon)
+		abslat = np.abs(nav_lat.to_numpy()-lat)
+		abslon = np.abs(nav_lon.to_numpy()-lon)
 		c = (abslon**2 + abslat**2)**0.5
 		return np.where(c == np.min(c))
 
@@ -85,11 +92,8 @@ def find_nearest_model_ids(gauge_location):
 	#printing results
 	print('-> ' + gauge_location + ' tide gauge coords: ' + str(coords['lat']) + ', ' + str(coords['lon']))
 	print('-> Corresponding xy ids on grc100 grid: ' + str(grc_x[0]) + ', ' + str(grc_y[0]))
+	print('-> Corresponding zos on grc100 grid: ' + str(ds.zos[grc_y[0],grc_x[0]].to_numpy()))
 	print('-> Corresponding grc100 coords: ' + str(grc_lat[0][0]) + ', ' + str(grc_lon[0][0]))
-
-	#Note on the results:
-	#On the grc100 grid, Lowe Inlet is an exact match(ish) and Hartley Bay is ~30m off, possibly less
-	#Update: the "exact" Lowe Inlet match has no data
 
 	print('Done; nearest grc100 coords to the specified tide gauge have been found')
 	return grc_x, grc_y
@@ -101,7 +105,7 @@ def model_tidal_signal(model_xy):
 
 	#opening model surface data
 	grc_filepaths_txt = 'filepaths/' + 'grc_filepaths_1h_grid_T_2D.csv'
-	grc_filepaths = list(pd.read_csv(grc_filepaths_txt))[30:32]
+	grc_filepaths = list(pd.read_csv(grc_filepaths_txt))[30:33]
 	grc_preprocessor = lambda ds: ds[['zos','zos_ib']] #specify veriables to retrieve  
 	#zos is sea surface height above geoid, zos_ib is the inverse barometer ssh
 	ds = xr.open_mfdataset(grc_filepaths,preprocess=grc_preprocessor)
@@ -120,34 +124,44 @@ def model_tidal_signal(model_xy):
 def tide_plotting(obs_df,model_da,location):
 	'''Plotting the observations and the model.'''
 
+	#dictionary of plot titles
+	plot_titles = {
+		'Prince_Rupert': 'Prince Rupert tidal signal ',
+		'Hartley_Bay': 'Hartley Bay tidal signal ',
+		'Lowe_Inlet': 'Lowe Inlet tidal signal '}
+
 	#prepping to plot
 	fig,ax1 = plt.subplots()
 	c1, c2, c3 = plt.cm.viridis([0, 0.5, 0.8])
 
 	#tide gauge data
-	obs_df.plot(x=location+'_date', y=location+'_val', ax=ax1, color=c1, label=location+' observations')
-	model_da.plot(ax=ax1, color=c2, label=location+' grc100 model') #does it need to be centerd around 0?
+	obs_df.plot(x=location+'_date', y=location+'_val', ax=ax1, color=c1, label='observations')
+	model_da.plot(ax=ax1, color=c2, label='model (grc100)') #does it need to be centerd around 0?
 
-	#holdover lines from when I was plotting tide gauges vs harmonic model
+	#holdover lines from when I was plotting tide gauges vs harmonic model; could probably delete this
 	##df.plot(x='HartleyBay_date', y='HartleyBay_val', ax=ax1, color=c2, label='Hartley Bay observed')
 	##df.plot(x='LoweInlet_date', y='LoweInlet_val', ax=ax1, color=c1, label='Lowe Inlet observed')
 	###modelled tides
 	##ax1.plot(time2020,hp,color=c3,label='Lowe Inlet harmonic model') #can change the time, so long as it is the same as when you made hp
 
+	#standard plotting stuff
 	ax1.legend()
-	ax1.set_title('Grenville Channel tides')
-	ax1.set_ylabel('SSH')
-	ax1.set_xlabel('Date')
-	#ax1.set_xlim([date(2020, 1, 1), date(2020, 1, 7)])
-	#ax1.set_xlim([date(2020, 6, 1), date(2020, 6, 7)])
-	ax1.set_xlim([date(2019, 12, 21), date(2020, 1, 3)])
+	ax1.set_title(plot_titles[location])
+	ax1.set_ylabel('SSH ($m$)')
 
-	fig.savefig('test.png',dpi=300, bbox_inches="tight")
+	#horizontal axis stuff
+	ax1.set_xlabel('Date')
+	ax1.set_xlim([date(2020, 1, 1), date(2020, 1, 8)])
+	ax1.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+
+	#saving
+	fig.savefig('figures/' + location + '_tides.png',dpi=300, bbox_inches="tight")
 	fig.clf()
 
 if __name__ == "__main__":
-	location = 'Hartley_Bay'
-	obs_df = get_tide_gauge_obs()
-	model_xy = find_nearest_model_ids(location)
-	model_da = model_tidal_signal(model_xy)
-	tide_plotting(obs_df,model_da,location)
+	for model in ['grc100','kit500']:
+		for location in ['Hartley_Bay','Lowe_Inlet']:
+			obs_df = get_tide_gauge_obs()
+			model_xy = find_nearest_model_ids(location,model)
+			model_da = model_tidal_signal(model_xy,model)
+			tide_plotting(obs_df,model_da,location,model)
