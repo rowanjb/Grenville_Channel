@@ -59,13 +59,16 @@ def mesh_map():
 		#opening the mesh 
 		meshPath = '/mnt/storage3/tahya/DFO/' + mesh + '_config/mesh_mask.nc'
 		DS = xr.open_dataset(meshPath)
-		tmask = DS.tmask.isel(t=0,z=0) #(taking slice of tmask at z=0)
+		#tmask = DS.tmask.isel(t=0,z=0) #(taking slice of tmask at z=0)
+		e1t = DS.e1t.isel(t=0)
 
 		#plotting meshes
-		p = ax.pcolormesh(DS.nav_lon, DS.nav_lat, tmask, transform=ccrs.PlateCarree(), vmin=0, vmax=1, cmap=cm)
+		p = ax.pcolormesh(DS.nav_lon, DS.nav_lat, e1t, transform=ccrs.PlateCarree(), cmap=cm)
+		plt.colorbar(p,ax=ax,orientation='horizontal',label='Grid size ($m$)',pad=0.1)
 
 		transform = ccrs.PlateCarree()._as_mpl_transform(ax)
 		
+		'''
 		ax.plot(-129.2535, 53.4329, 'o', color='black', transform=ccrs.PlateCarree())
 		ax.plot(-129.2535, 53.4329, '.', color='white', transform=ccrs.PlateCarree())
 		
@@ -78,12 +81,13 @@ def mesh_map():
 		ax.annotate('Hartley\nBay', xy=(-129.2535, 53.4329),xytext=(-128.75, 53),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
 		ax.annotate('Lowe Inlet', xy=(-129.5799, 53.5553),xytext=(-128.75, 53.75),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
 		ax.annotate('Prince Rupert', xy=(-130.3208, 54.3150),xytext=(-129.3, 54.25),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
-
+		''' 
+		
 		#title
 		ax.set_title(mesh)
 		
 	#overall title
-	fig.suptitle('Comparing mesh sizes around Grenville Channel',y=0.88)
+	fig.suptitle('Comparing mesh sizes around Grenville Channel',y=0.975)
 
 	#save and close figure
 	plt.savefig('maps/meshes' + '_map.png',dpi=300, bbox_inches="tight")
