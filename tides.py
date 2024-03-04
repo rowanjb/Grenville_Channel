@@ -3,7 +3,7 @@
 #Rowan Brown
 #Feb 2024
 
-print('importing...')
+print('importing packages...')
 import pandas as pd
 import numpy as np
 import xarray as xr
@@ -54,6 +54,26 @@ def get_tide_gauge_obs():
 
 	print('Done; obs data has been read and harmonic analysis has been completed')
 	return df
+
+def tide_gauge_model_constituents(obs_df):
+	'''Returns observational data with only the 8 constituents from the model.
+	All other constituents are removed.'''
+
+	for location in ['Prince_Rupert','Lowe_Inlet','Hartley_Bay']:
+		wt = pytide.WaveTable(['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2'])
+		time = obs_df[location+'_date'].dropna().to_numpy()
+		h = obs_df[location+'_val'].dropna().to_numpy()
+		f, vu = wt.compute_nodal_modulations(time)
+		w = wt.harmonic_analysis(h, f, vu)
+		hp = wt.tide_from_tide_series(time, w) #this is the "modelled" data; can change the time if you want!!
+		new_obs_df = pd.DataFrame({
+			location+'_date_model_constituents': time,
+    		location+'_val_model_constituents': hp
+		})
+		obs_df = pd.concat([obs_df, new_obs_df], axis=1)
+
+	print('Done removing all but the model constituents from the obs.')
+	return obs_df
 
 def find_nearest_model_ids(gauge_location,model): 
 	'''Searches for model nav_lat and nav_lon coords that are nearest the tide gauges.
@@ -111,10 +131,18 @@ def model_tidal_signal(model_xy,model,yearmonth):
 	#zos is sea surface height above geoid, zos_ib is the inverse barometer ssh
 	ds = xr.open_mfdataset(filepaths,preprocess=model_preprocessor)
 
+	'''
+	###########################
+	print(ds.zos)
+	print(ds.zos_ib.to_numpy())
+	quit()
+	###########################
+	''' 
+
 	#extracting only the important points
 	model_x, model_y = model_xy
 	ds['zos+zos_ib'] = ds.zos + ds.zos_ib
-	da_at_gauge = ds['zos+zos_ib'].sel(x=model_x, y=model_y) #only looking at zos for now
+	da_at_gauge = ds['zos'].sel(x=model_x, y=model_y) #Can choose to look at only zos or zos+zos_ib
 
 	#ending for the day on feb 11
 	#grc_hartley_ds = ds.sel(x=862, y=76) #very near edge==bad
@@ -147,9 +175,9 @@ def tide_plotting(obs_df,location,yearmonth,model_da,model,**kwargs):
 
 	#dictionary of plot titles
 	plot_titles = {
-		'Prince_Rupert': 'Prince Rupert tidal signal ',
-		'Hartley_Bay': 'Hartley Bay tidal signal ',
-		'Lowe_Inlet': 'Lowe Inlet tidal signal '}
+		'Prince_Rupert': 'Prince Rupert tidal water level \n modelling vs observations',
+		'Hartley_Bay': 'Hartley Bay tidal water level \n modelling vs observations',
+		'Lowe_Inlet': 'Lowe Inlet tidal water level \n modelling vs observations'}
 
 	#prepping to plot
 	fig,ax1 = plt.subplots()
@@ -160,14 +188,26 @@ def tide_plotting(obs_df,location,yearmonth,model_da,model,**kwargs):
 	month = yearmonth[-2:]
 	start_date = year+'-'+month+'-01'
 	end_date = year+'-'+month+'-07'
+	if location+'_date_model_constituents' in obs_df.columns: 
+		new_obs_df = obs_df[[location+'_date_model_constituents',location+'_val_model_constituents']]
+		new_obs_df = new_obs_df.set_index(location+'_date_model_constituents')[start_date:end_date]
+	obs_df = obs_df[[location+'_date',location+'_val']]
 	obs_df = obs_df.set_index(location+'_date')[start_date:end_date]
 	model_da = model_da.sel(time_counter=slice(start_date,end_date))
 	if model2: model2_da = model2_da.sel(time_counter=slice(start_date,end_date))
 	
 	#tide gauge data
 	model_da.plot(ax=ax1, color=c2, label=model) #does it need to be centerd around 0?
-	if model2: model2_da.plot(ax=ax1, color=c3, linestyle='dashed', label=model2)
-	obs_df.reset_index().plot(x=location+'_date', y=location+'_val', ax=ax1, color=c1, label='observations')
+	if model2: model2_da.plot(ax=ax1, color=c3, label=model2)
+	obs_df.reset_index().plot(x=location+'_date', y=location+'_val', ax=ax1, color=c1, label='observations - full signal')
+	if new_obs_df is not None: 
+		new_obs_df.reset_index().plot(
+			x=location+'_date_model_constituents', 
+			y=location+'_val_model_constituents', 
+			ax=ax1, 
+			color=c1, 
+			linestyle='dashed', 
+			label='observations - model constituents only')		
 
 	#holdover lines from when I was plotting tide gauges vs harmonic model; could probably delete this
 	##df.plot(x='HartleyBay_date', y='HartleyBay_val', ax=ax1, color=c2, label='Hartley Bay observed')
@@ -187,17 +227,83 @@ def tide_plotting(obs_df,location,yearmonth,model_da,model,**kwargs):
 	ax1.set_ylabel('SSH ($m$)')
 
 	#saving
-	fig.savefig('figures/incl_zos_ib_' + location + '_tides_' + start_date + '.png',dpi=300, bbox_inches="tight")
+	fig.savefig('tidal_figures/' + location + '_tides_' + start_date + '.png',dpi=300, bbox_inches="tight") #incl_zos_ib_
 	fig.clf()
+
+def model_harmonic_analysis_plots(model_da,model,yearmonth,location):
+	'''Breaks down the tidal signal from within a model dataarray and (currently) 
+	creates a plot of the consituents; the exact utility of harmonic analysis on the
+	model data can be fleshed out later.'''
+
+	#dictionary of plot titles
+	plot_titles = {
+		'Prince_Rupert': 'Prince Rupert \n ' + model + ' tidal constituents',
+		'Hartley_Bay': 'Hartley Bay \n ' + model + ' tidal constituents',
+		'Lowe_Inlet': 'Lowe Inlet \n ' + model + ' tidal constituents'}
+
+	#prepping to plot
+	fig,ax1 = plt.subplots()
+	c = plt.cm.viridis(np.linspace(0, 1, 8)) #8 constituents
+
+	#prepping the data for harmonic analysis
+	model_da = model_da.drop_vars(['time_instant','nav_lat','nav_lon']).isel(x=0,y=0)
+	time = model_da.time_counter.to_numpy()
+	h = model_da.to_numpy()
+
+	#plotting model data
+	if model=='grc100' and location=='Prince_Rupert': 
+		print("Lowe Inlet isn't within the grc100 grid")
+		quit()
+	else:
+		model_da.plot(ax=ax1, color='black', linestyle='dashed', label=model) #does it need to be centerd around 0?
+	
+	#plotting constituents
+	for i,constituent in enumerate(['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']):
+		wt = pytide.WaveTable([constituent]) #these are the forcing constituents
+		f, vu = wt.compute_nodal_modulations(time)
+		w = wt.harmonic_analysis(h, f, vu)
+		hp = wt.tide_from_tide_series(time, w)
+		ax1.plot(time,hp,c=c[i],label=constituent)
+	
+	#horizontal axis stuff
+	ax1.set_xlabel('Date')
+	year = int(yearmonth[:4])
+	month = int(yearmonth[-2:])
+	ax1.set_xlim([date(year, month, 1), date(year, month, 8)])
+
+	#standard plotting stuff
+	ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+	ax1.set_title(plot_titles[location])# + '\n' + start_date + ' - ' + end_date)
+	ax1.set_ylabel('SSH ($m$)')
+
+	#saving
+	fig.savefig('tidal_figures/' + model + '_constituents_' + location + '.png',dpi=300, bbox_inches="tight")
+	fig.clf()
+
+	print('Done creating plot of model tidal constituents')
 
 if __name__ == "__main__":
 
+	#== this section is for harmonic analysis on the model data ==# 
+	'''
 	yearmonth='202006'
-	obs_df = get_tide_gauge_obs()
+	location = 'Lowe_Inlet'
+
+	grc100_xy = find_nearest_model_ids(location,'grc100')
+	grc100_da = model_tidal_signal(grc100_xy,'grc100',yearmonth)
+	model_harmonic_analysis_plots(grc100_da,'grc100',yearmonth,location)
+	kit500_xy = find_nearest_model_ids(location,'kit500')
+	kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
+	model_harmonic_analysis_plots(kit500_da,'kit500',yearmonth,location)
+	quit()
+	'''
 
 	#== this section is for computing the model-obs error ==#
-
+	'''
+	yearmonth='202006'
 	location = 'Lowe_Inlet'
+
+	obs_df = get_tide_gauge_obs()
 
 	kit500_xy = find_nearest_model_ids(location,'kit500')
 	kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
@@ -206,11 +312,13 @@ if __name__ == "__main__":
 	grc100_xy = find_nearest_model_ids(location,'grc100')
 	grc100_da = model_tidal_signal(grc100_xy,'grc100',yearmonth)
 	error(obs_df,location,grc100_da,'grc100')
-
-	quit()
-
+	'''
 
 	#== and this section is for making plots of ssh ==#
+
+	yearmonth='202101'
+	obs_df = get_tide_gauge_obs()
+	obs_df = tide_gauge_model_constituents(obs_df)
 
 	location = 'Lowe_Inlet'
 	kit500_xy = find_nearest_model_ids(location,'kit500')
