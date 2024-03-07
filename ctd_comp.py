@@ -59,7 +59,6 @@ for c in ctd_files:
         except:
             gf = xr.open_dataset(grc_paths[1]+gp_files[i]+'/NEMO_RPN_1d_grid_T.nc')
 
-        print(gf)
          
         #get the right profile
         nav_lat = xr.where(gf.nav_lat != 0, gf.nav_lat, np.nan)
@@ -76,8 +75,6 @@ for c in ctd_files:
         #now plot the profile
         grc_profile[0].plot(y='deptht', label='grc100')
 
-    else: continue
-
     for kp in kit_paths:
         kp_files = kp_files+[name for name in os.listdir(kp)
             if os.path.isdir(os.path.join(kp, name))]
@@ -92,7 +89,6 @@ for c in ctd_files:
     except:
         kf = xr.open_dataset(kit_paths[1]+kp_files[i]+'/NEMO_RPN_1d_grid_T.nc')
 
-    print(kf)
 
     #get the right profile
     nav_lat = xr.where(kf.nav_lat != 0, kf.nav_lat, np.nan)
@@ -106,8 +102,6 @@ for c in ctd_files:
     plt.gca().invert_yaxis()
     plt.title("Salinity profile at lon: "+str(lon)+", lat: "+str(lat)+" on "+t.strftime('%d/%m/%Y'))
     plt.legend()
-    #plt.savefig('figs/sal_profile_'+t.strftime('%d%m%Y')+'_'+str(lon)+'_'+str(lat)+'.png')
-    #plt.clf()
-    plt.show()
-    exit()
+    plt.savefig('figs/sal_profile_'+t.strftime('%d%m%Y')+'_'+str(lon)+'_'+str(lat)+'.png')
+    plt.clf()
 
