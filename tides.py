@@ -11,6 +11,7 @@ from datetime import datetime, date
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pytide
+from scipy import signal
 print('done importing')
 
 def get_tide_gauge_obs():
@@ -59,13 +60,19 @@ def tide_gauge_model_constituents(obs_df):
 	'''Returns observational data with only the 8 constituents from the model.
 	All other constituents are removed.'''
 
+	all_const = ['O1', 'P1', 'K1', '2N2', 'Mu2', 'N2', 'Nu2', 'M2', 'L2', 'T2', 'S2', 'K2', 'M4', 'S1', 'Q1', 'Mm', 'Mf', 'Mtm', 'Msqm', 'Eps2', 'Lambda2', 'Eta2', '2Q1', 'Sigma1', 'Rho1', 'M11', 'M12', 'Chi1', 'Pi1', 'Phi1', 'Theta1', 'J1', 'OO1', 'M3', 'M6', 'MN4', 'MS4', 'N4', 'R2', 'R4', 'S4', 'MNS2', 'M13', 'MK4', 'SN4', 'SK4', '2MN6', '2MS6', '2MK6', 'MSN6', '2SM6', 'MSK6', 'MP1', '2SM2', 'Psi1', '2MS2', 'MKS2', '2MN2', 'MSN2', 'MO3', '2MK3', 'MK3', 'S6', 'M8', 'MSf', 'Ssa', 'Sa']
+	model_const = ['M2', 'M2', 'Eps2', 'M11', 'M12', 'MNS2', 'M13', '2MS2']#['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']
+	model_const_ids = [all_const.index(i) for i in model_const]	
+
 	for location in ['Prince_Rupert','Lowe_Inlet','Hartley_Bay']:
-		wt = pytide.WaveTable(['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2'])
 		time = obs_df[location+'_date'].dropna().to_numpy()
 		h = obs_df[location+'_val'].dropna().to_numpy()
+		wt = pytide.WaveTable()#[constituent]) #these are the forcing constituents
 		f, vu = wt.compute_nodal_modulations(time)
 		w = wt.harmonic_analysis(h, f, vu)
-		hp = wt.tide_from_tide_series(time, w) #this is the "modelled" data; can change the time if you want!!
+		w_short = w[model_const_ids]
+		wt_short = pytide.WaveTable(model_const)
+		hp = wt_short.tide_from_tide_series(time, w_short) #this is the "modelled" data; can change the time if you want!!
 		new_obs_df = pd.DataFrame({
 			location+'_date_model_constituents': time,
     		location+'_val_model_constituents': hp
@@ -227,7 +234,7 @@ def tide_plotting(obs_df,location,yearmonth,model_da,model,**kwargs):
 	ax1.set_ylabel('SSH ($m$)')
 
 	#saving
-	fig.savefig('tidal_figures/' + location + '_tides_' + start_date + '.png',dpi=300, bbox_inches="tight") #incl_zos_ib_
+	fig.savefig('tidal_figures/testest' + location + '_tides_' + start_date + '.png',dpi=300, bbox_inches="tight") #incl_zos_ib_
 	fig.clf()
 
 def model_harmonic_analysis_plots(model_da,model,yearmonth,location):
@@ -282,7 +289,165 @@ def model_harmonic_analysis_plots(model_da,model,yearmonth,location):
 
 	print('Done creating plot of model tidal constituents')
 
+def observations_harmonic_analysis_plots(obs_df,yearmonth,location):
+	'''Breaks down the tidal signal from tide gauges and (currently) 
+	creates a plot of the consituents.'''
+
+	#dictionary of plot titles
+	plot_titles = {
+		'Prince_Rupert': 'Prince Rupert \n tide gauge constituents',
+		'Hartley_Bay': 'Hartley Bay \n tide gauge constituents',
+		'Lowe_Inlet': 'Lowe Inlet \n tide gauge constituents'}
+
+	#prepping to plot
+	fig,ax1 = plt.subplots()
+	#c = plt.cm.viridis(np.linspace(0, 1, 14)) #8 constituents
+
+	#prepping the data for harmonic analysis
+	time = obs_df[location+'_date'].to_numpy()
+	h = obs_df[location+'_val'].to_numpy()
+
+	obs_df.plot(x=location+'_date', y=location+'_val', ax=ax1, color='black', label='observations - full signal')
+	#linestyle='dashed', 
+
+	#constituents = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']
+	constituents = ['O1', 'P1', 'K1', '2N2', 'Mu2', 'N2', 'Nu2', 'M2', 'L2', 'T2', 'S2', 'K2', 'M4', 'S1', 'Q1', 'Mm', 'Mf', 'Mtm', 'Msqm', 'Eps2', 'Lambda2', 'Eta2', '2Q1', 'Sigma1', 'Rho1', 'M11', 'M12', 'Chi1', 'Pi1', 'Phi1', 'Theta1', 'J1', 'OO1', 'M3', 'M6', 'MN4', 'MS4', 'N4', 'R2', 'R4', 'S4', 'MNS2', 'M13', 'MK4', 'SN4', 'SK4', '2MN6', '2MS6', '2MK6', 'MSN6', '2SM6', 'MSK6', 'MP1', '2SM2', 'Psi1', '2MS2', 'MKS2', '2MN2', 'MSN2', 'MO3', '2MK3', 'MK3', 'S6', 'M8', 'MSf', 'Ssa', 'Sa']
+
+	#plotting constituents
+	const_list = []
+	wt = pytide.WaveTable()#[constituent]) #these are the forcing constituents
+	f, vu = wt.compute_nodal_modulations(time)
+	for i,constituent in enumerate(constituents):
+		w = wt.harmonic_analysis(h, f, vu)
+		new_w = np.array([w[i]]) 
+		wt = pytide.WaveTable([constituent])
+		hp = wt.tide_from_tide_series(time, new_w)
+		if hp.max() > 1: 
+			ax1.plot(time,hp,label=constituent) #c=c[i]
+			const_list.append(hp)
+		print(constituent + ' done')
+	
+	const_df = pd.DataFrame(const_list).transpose()
+	const_df = const_df.assign(sum=const_df.sum(axis=1))
+	const_df = const_df.assign(t=time)
+	const_df.plot(x='t', y='sum', ax=ax1, linestyle='dashed', label='observations - reconstructed')
+
+	#horizontal axis stuff
+	ax1.set_xlabel('Date')
+	year = int(yearmonth[:4])
+	month = int(yearmonth[-2:])
+	ax1.set_xlim([date(year, month, 4), date(year, month, 8)])
+
+	#standard plotting stuff
+	ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+	ax1.set_title(plot_titles[location])# + '\n' + start_date + ' - ' + end_date)
+	ax1.set_ylabel('SSH ($m$)')
+
+	#saving
+	fig.savefig('tidal_figures/' + 'observational_constituents_' + location + '.png',dpi=300, bbox_inches="tight")
+	fig.clf()
+
+	print('Done creating plot of model tidal constituents')
+
+def plot_periodogram(obs_df,grc100_da,kit500_da,location):
+	'''Plots a power spectrum comparing obs and the models.'''
+
+	grc100_da = grc100_da.isel(x=0,y=0).to_numpy()
+	kit500_da = kit500_da.isel(x=0,y=0).to_numpy()
+	obs_df = obs_df[location+'_val'].to_numpy()
+	obs_df = obs_df[~np.isnan(obs_df)]
+	
+	#testing a theory, ignore this, basically
+	'''
+	wt=pytide.WaveTable()
+	all_constituents = wt.constituents()
+	all_freqs = wt.freq()
+	for i,f in enumerate(all_freqs):
+		print(all_constituents[i], f/(2*3.141595))
+	#main_constituents = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2', 'Mu2','M2','Eps2','M11','M12','MNS2','M13','2MS2']
+	f, pxx = signal.periodogram(obs,nfft=15720*100) #get the power spectrum
+	constituents_power = []
+	constituents_f = []
+	constituents_names = []
+	for i,const in enumerate(all_constituents):
+		freq = all_freqs[i]
+		print(freq)
+		closest_freq = min(f, key=lambda x:abs(x-freq))
+		id = f.tolist().index(closest_freq)
+		if pxx[id] > 2:
+			constituents_f.append(closest_freq)
+			constituents_power.append(pxx[id])
+			constituents_names.append(const)
+	fig,ax1 = plt.subplots() #init the plot
+	ax1.plot(f/3600,pxx,c='black')
+	ax1.bar(constituents_f,constituents_power,width=0.000001)
+	#ax1.set_xlim(0,0.0003)
+	#ax1.set_xticks(constituents_f)
+	#ax1.set_xticklabels(constituents_names)
+	print(constituents_f)
+	'''
+
+	fig,ax1 = plt.subplots() #init the plot
+
+	wt=pytide.WaveTable()
+	all_constituents = wt.constituents()
+	all_freqs = wt.freq()
+	model_constituents = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']
+	model_freqs = []
+	for i,c in enumerate(model_constituents):
+		id = all_constituents.index(c)
+		model_freqs.append(1/(all_freqs[id]*3600/(2*3.14159265359)))
+
+	c = plt.cm.viridis(np.linspace(0, 1, 8))
+	for i,n in enumerate(model_constituents):
+		ax1.vlines(model_freqs[i],0,10000000,colors=c[i],linestyles='dashed',label=n+' (T: '+str(model_freqs[i])[:5]+' hr)')
+
+	obs_f, obs_pxx = signal.periodogram(obs_df)
+	grc100_f, grc100_pxx = signal.periodogram(grc100_da)
+	kit500_f, kit500_pxx = signal.periodogram(kit500_da)					 
+	
+	c1, c2, c3 = plt.cm.viridis([0, 0.5, 0.8])
+	ax1.semilogy(1/obs_f[1:],obs_pxx[1:],c=c1,label='Tide gauge') #plot the data 
+	ax1.semilogy(1/grc100_f[1:],grc100_pxx[1:],c=c2,label='grc100') #plot the data 
+	ax1.semilogy(1/kit500_f[1:],kit500_pxx[1:],c=c3,label='kit500') #plot the data 
+
+	#dictionary of plot titles
+	plot_titles = {
+		'Prince_Rupert': 'Prince Rupert tidal power spectrum\nmodelling vs observations',
+		'Hartley_Bay': 'Hartley Bay tidal power spectrum\nmodelling vs observations',
+		'Lowe_Inlet': 'Lowe Inlet tidal power spectrum\nmodelling vs observations'}
+
+	plt.title(plot_titles[location])
+	ax1.set_ylabel('PSD')
+	ax1.set_xlabel('Period ($hr$)')# ($hr^{-1}$)')
+
+	ax1.set_xlim(0,36) #set xlims for aesthetics
+	ax1.set_ylim(0.000001,100000)
+	ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+	
+	fig.savefig('tidal_figures/ps_'+location+'.png',dpi=1200, bbox_inches="tight")
+	fig.clf()
+
 if __name__ == "__main__":
+
+	locations=['Prince_Rupert','Lowe_Inlet','Hartley_Bay']
+	obs_df = get_tide_gauge_obs()
+	yearmonth='202006'
+	for location in locations:
+		kit500_xy = find_nearest_model_ids(location,'kit500')
+		kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
+		grc100_xy = find_nearest_model_ids(location,'grc100')
+		grc100_da = model_tidal_signal(grc100_xy,'grc100',yearmonth)
+		plot_periodogram(obs_df,grc100_da,kit500_da,location)
+	quit()
+
+	#== this section is for harmonic analysis and plotting constituents on the obs data ==#
+	'''
+	yearmonth='202006'
+	location = 'Lowe_Inlet'
+	obs_df = get_tide_gauge_obs()
+	observations_harmonic_analysis_plots(obs_df,yearmonth,location)
+	'''
 
 	#== this section is for harmonic analysis on the model data ==# 
 	'''
@@ -315,7 +480,7 @@ if __name__ == "__main__":
 	'''
 
 	#== and this section is for making plots of ssh ==#
-
+	
 	yearmonth='202101'
 	obs_df = get_tide_gauge_obs()
 	obs_df = tide_gauge_model_constituents(obs_df)
@@ -326,15 +491,16 @@ if __name__ == "__main__":
 	kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
 	grc100_da = model_tidal_signal(grc100_xy,'grc100',yearmonth)
 	tide_plotting(obs_df,location,yearmonth,kit500_da,'kit500',model2_da=grc100_da,model2='grc100')
-
+	
 	location = 'Hartley_Bay'
 	kit500_xy = find_nearest_model_ids(location,'kit500')
 	grc100_xy = find_nearest_model_ids(location,'grc100')
 	kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
 	grc100_da = model_tidal_signal(grc100_xy,'grc100',yearmonth)
 	tide_plotting(obs_df,location,yearmonth,kit500_da,'kit500',model2_da=grc100_da,model2='grc100')
-
+	'''
 	location = 'Prince_Rupert'
 	kit500_xy = find_nearest_model_ids('Prince_Rupert','kit500')
 	kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
 	tide_plotting(obs_df,location,yearmonth,kit500_da,'kit500')
+	'''
