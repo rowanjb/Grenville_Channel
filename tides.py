@@ -56,12 +56,18 @@ def get_tide_gauge_obs():
 	print('Done; obs data has been read and harmonic analysis has been completed')
 	return df
 
-def tide_gauge_rebuilt_signal(obs_df):
+def tide_gauge_rebuilt_signal(obs_df,**kwargs):
 	'''Returns observational data rebuilt with only a subset of constituents (usually the 8 from the model).
 	All other constituents are removed.'''
 
+	#in case you want to specify the number of constituents 
+	num_const = kwargs.get('num_const', None)
+
+	#ordered as it comes out of pytide.WaveTable()
 	all_const = ['O1', 'P1', 'K1', '2N2', 'Mu2', 'N2', 'Nu2', 'M2', 'L2', 'T2', 'S2', 'K2', 'M4', 'S1', 'Q1', 'Mm', 'Mf', 'Mtm', 'Msqm', 'Eps2', 'Lambda2', 'Eta2', '2Q1', 'Sigma1', 'Rho1', 'M11', 'M12', 'Chi1', 'Pi1', 'Phi1', 'Theta1', 'J1', 'OO1', 'M3', 'M6', 'MN4', 'MS4', 'N4', 'R2', 'R4', 'S4', 'MNS2', 'M13', 'MK4', 'SN4', 'SK4', '2MN6', '2MS6', '2MK6', 'MSN6', '2SM6', 'MSK6', 'MP1', '2SM2', 'Psi1', '2MS2', 'MKS2', '2MN2', 'MSN2', 'MO3', '2MK3', 'MK3', 'S6', 'M8', 'MSf', 'Ssa', 'Sa']
-	subset_const = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']#, 'Eps2', 'M11', 'M12', 'MNS2', 'M13', '2MS2']
+	#subset_const = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']#, 'Eps2','M11','M12','MNS2','M13','2MS2','Mu2','MO3','2MK3']#['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']#, 'Eps2', 'M11', 'M12', 'MNS2', 'M13', '2MS2']
+	#descending order of energy in lowe inlet:
+	subset_const = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2','M11', 'M13','M12','Eps2', 'MNS2','S1', 'SK4', 'R4', 'MO3', '2MK3', '2MS2', 'Mu2', 'Psi1', 'Nu2', 'MKS2', 'Pi1', 'Sa', 'Mf', 'Chi1', '2N2', 'Ssa', 'J1', 'Msqm', 'MSf', '2MN2', 'L2', 'Mm', 'MP1', 'M3', 'Phi1', 'R2', 'MS4', 'Eta2', 'Mtm', 'OO1', 'Sigma1', 'Rho1', '2Q1', 'T2', 'S4', 'Theta1', 'MN4', 'M4', 'MSN2', 'Lambda2', '2SM2', 'MK4', 'M6', '2MN6', 'S6', 'N4', '2MS6', 'MK3', 'SN4', '2SM6', '2MK6', 'MSN6', 'M8', 'MSK6']
 	subset_const_ids = [all_const.index(i) for i in subset_const]	
 
 	for location in ['Prince_Rupert','Lowe_Inlet','Hartley_Bay']:
@@ -73,10 +79,14 @@ def tide_gauge_rebuilt_signal(obs_df):
 		w_short = w[subset_const_ids]
 		wt_short = pytide.WaveTable(subset_const)
 		hp = wt_short.tide_from_tide_series(time, w_short)
-		new_obs_df = pd.DataFrame({
-			location+'_date_subset_constituents': time,
-    		location+'_val_subset_constituents': hp
-		})
+		if num_const is not None:
+			new_obs_df = pd.DataFrame({
+				location+'_date_'+str(num_const)+'_subset_constituents': time,
+    			location+'_val_'+str(num_const)+'_subset_constituents': hp})
+		else:
+			new_obs_df = pd.DataFrame({
+				location+'_date_subset_constituents': time,
+    			location+'_val_subset_constituents': hp})
 		obs_df = pd.concat([obs_df, new_obs_df], axis=1)
 
 	print('Done removing all but a subset of constituents from the obs.')
@@ -154,7 +164,8 @@ def model_tidal_signal(model_xy,model,yearmonth=False):
 	model_x, model_y = model_xy
 	if yearmonth==False:
 		ds = ds.sel(time_counter=slice(date(2019,6,1),date(2021,6,1)))
-	da_at_gauge = ds['zos'].sel(x=model_x, y=model_y) #Can choose to look at only zos or zos+zos_ib
+	#ds['zos_and_zos_ib'] = ds.zos + ds.zos_ib #wanted when comparing signal to obs
+	da_at_gauge = ds['zos'].sel(x=model_x, y=model_y) #Can choose to look at only zos or zos_and_zos_ib
 
 	print('Done; ssh data from '+model+' accessed')
 	return da_at_gauge
@@ -245,6 +256,47 @@ def tide_plotting(obs_df,location,yearmonth,model_da,model,**kwargs):
 	fig.savefig('tidal_figures/' 'tides_' + location + '_' + start_date + '_with_rebuilt_obs.png',dpi=300, bbox_inches="tight") #incl_zos_ib_
 	fig.clf()
 
+def obs_plotting_with_rebuilt_signals(obs_df,location,yearmonth):
+	'''Plotting the observations, full signal and rebuilt signals.
+	Hard coded for time-saving; could improve later!'''
+
+	#dictionary of plot titles
+	plot_titles = {
+		'Prince_Rupert': 'Prince Rupert tidal water level \n observations - full vs rebuilt signals',
+		'Hartley_Bay': 'Hartley Bay tidal water level \n observations - full vs rebuilt signals',
+		'Lowe_Inlet': 'Lowe Inlet tidal water level \n observations - full vs rebuilt signals'}
+
+	#prepping to plot
+	fig,ax1 = plt.subplots(figsize=(6,5))
+	c1, c2, c3, c4, c5 = plt.cm.viridis([0, 0.2, 0.4, 0.6, 0.8])
+
+	#slicing the data
+	year = yearmonth[:4]
+	month = yearmonth[-2:]
+	start_date = year+'-'+month+'-04'
+	end_date = year+'-'+month+'-07'
+
+	obs_df = obs_df.set_index(location+'_date')[start_date:end_date].reset_index()
+	obs_df_8 = obs_df[[location+'_date_8_subset_constituents',location+'_val_8_subset_constituents']]
+	obs_df_12 = obs_df[[location+'_date_12_subset_constituents',location+'_val_12_subset_constituents']]
+	obs_df_17 = obs_df[[location+'_date_17_subset_constituents',location+'_val_17_subset_constituents']]
+	obs_df_26 = obs_df[[location+'_date_26_subset_constituents',location+'_val_26_subset_constituents']]
+	obs_df = obs_df[[location+'_date',location+'_val']]
+
+	obs_df.plot(x=location+'_date', y=location+'_val', ax=ax1, color=c1, label='full signal')
+	obs_df_8.plot(x=location+'_date_8_subset_constituents', y=location+'_val_8_subset_constituents', ax=ax1, color=c2, label='8 constituents')
+	obs_df_12.plot(x=location+'_date_12_subset_constituents', y=location+'_val_12_subset_constituents', ax=ax1, color=c3, label='12 constituents')
+	obs_df_17.plot(x=location+'_date_17_subset_constituents', y=location+'_val_17_subset_constituents', ax=ax1, color=c4, label='17 constituents')
+	obs_df_26.plot(x=location+'_date_26_subset_constituents', y=location+'_val_26_subset_constituents', ax=ax1, color=c5, label='26 constituents')
+
+	ax1.set_xlabel('Date')
+	ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+	ax1.set_title(plot_titles[location])# + '\n' + start_date + ' - ' + end_date)
+	ax1.set_ylabel('SSH ($m$)')
+
+	fig.savefig('tidal_figures/tides_' + location + '_' + start_date + '_with_5_rebuilt_obs.png',dpi=300, bbox_inches="tight") #incl_zos_ib_
+	fig.clf()
+
 def model_harmonic_analysis_plots(model_da,model,yearmonth,location):
 	'''Breaks down the tidal signal from within a model dataarray and (currently) 
 	creates a plot of the consituents; the exact utility of harmonic analysis on the
@@ -314,27 +366,35 @@ def observations_harmonic_analysis_plots(obs_df,yearmonth,location):
 	#prepping the data for harmonic analysis
 	time = obs_df[location+'_date'].to_numpy()
 	h = obs_df[location+'_val'].to_numpy()
+	time = time[~np.isnan(h)]
+	h = h[~np.isnan(h)]
 
+	#initial plot of the base data
 	obs_df.plot(x=location+'_date', y=location+'_val', ax=ax1, color='black', label='observations - full signal')
-	#linestyle='dashed', 
-
-	#constituents = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']
-	constituents = ['O1', 'P1', 'K1', '2N2', 'Mu2', 'N2', 'Nu2', 'M2', 'L2', 'T2', 'S2', 'K2', 'M4', 'S1', 'Q1', 'Mm', 'Mf', 'Mtm', 'Msqm', 'Eps2', 'Lambda2', 'Eta2', '2Q1', 'Sigma1', 'Rho1', 'M11', 'M12', 'Chi1', 'Pi1', 'Phi1', 'Theta1', 'J1', 'OO1', 'M3', 'M6', 'MN4', 'MS4', 'N4', 'R2', 'R4', 'S4', 'MNS2', 'M13', 'MK4', 'SN4', 'SK4', '2MN6', '2MS6', '2MK6', 'MSN6', '2SM6', 'MSK6', 'MP1', '2SM2', 'Psi1', '2MS2', 'MKS2', '2MN2', 'MSN2', 'MO3', '2MK3', 'MK3', 'S6', 'M8', 'MSf', 'Ssa', 'Sa']
 
 	#plotting constituents
 	const_list = []
 	wt = pytide.WaveTable()#[constituent]) #these are the forcing constituents
+	constituents = wt.constituents()
 	f, vu = wt.compute_nodal_modulations(time)
+	max_constituent_hp = []
 	for i,constituent in enumerate(constituents):
 		w = wt.harmonic_analysis(h, f, vu)
 		new_w = np.array([w[i]]) 
 		wt = pytide.WaveTable([constituent])
 		hp = wt.tide_from_tide_series(time, new_w)
+		max_constituent_hp.append(hp.max())
 		if hp.max() > 1: 
 			ax1.plot(time,hp,label=constituent) #c=c[i]
 			const_list.append(hp)
 		print(constituent + ' done')
 	
+	#== ugly code for presentation stats =================================#######################################################
+	max_constituent_hp_df = pd.DataFrame({'max_hp': max_constituent_hp},index=list(constituents))
+	max_constituent_hp_df.sort_values(by=['max_hp']).to_csv('CSVs/constituent_hp_'+location+'.csv')
+	return
+
+	#plotting the reconstructed obs
 	const_df = pd.DataFrame(const_list).transpose()
 	const_df = const_df.assign(sum=const_df.sum(axis=1))
 	const_df = const_df.assign(t=time)
@@ -357,65 +417,38 @@ def observations_harmonic_analysis_plots(obs_df,yearmonth,location):
 
 	print('Done creating plot of model tidal constituents')
 
-def plot_periodogram(obs_df,grc100_da,kit500_da,location):
+def plot_periodogram(obs_df,kit500_da,location,**kwargs):
 	'''Plots a power spectrum comparing obs and the models.
 	A work in progress!'''
 
+	#there's no grc100 data from Prince Rupert, so it isn't always passed in
+	grc100_da = kwargs.get('grc100_da', None)
+
 	#processing data
-	grc100_da = grc100_da.isel(x=0,y=0).to_numpy()
+	if grc100_da is not None:
+		grc100_da = grc100_da.isel(x=0,y=0).to_numpy()
 	kit500_da = kit500_da.isel(x=0,y=0).to_numpy()
 	if location+'_date_subset_constituents' in obs_df.columns: 
 		subset_obs_df = obs_df[location+'_val_subset_constituents'].to_numpy()
 		subset_obs_df = subset_obs_df[~np.isnan(subset_obs_df)]
+	else: 
+		subset_obs_df = None #basically a true/false value for future if statements
 	obs_df = obs_df[location+'_val'].to_numpy()
 	obs_df = obs_df[~np.isnan(obs_df)]
 	
 	#init the plot
-	fig,ax1 = plt.subplots() 
-
-	#getting the frequencies of the constituents
-	wt=pytide.WaveTable()
-	all_constituents = wt.constituents()
-	all_freqs = wt.freq()
-
-	#getting the frequencies of the 8 model constituents
-	model_constituents = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2']
-	model_freqs = []
-	for i,c in enumerate(model_constituents):
-		id = all_constituents.index(c)
-		model_freqs.append(1/(all_freqs[id]*3600/(2*3.14159265359)))
-	c = plt.cm.viridis(np.linspace(0, 1, 8))
-	for i,n in enumerate(model_constituents): #plotting vertical lines at the 8 model constituents
-		ax.plot(-130.3208, 54.3150, 'o', color='black', transform=ccrs.PlateCarree())
-
-		ax.annotate('Hartley\nBay', xy=(-129.2535, 53.4329),xytext=(-128.75, 53),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
-		ax.annotate('Lowe Inlet', xy=(-129.5799, 53.5553),xytext=(-128.75, 53.75),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
-		ax.annotate('Prince Rupert', xy=(-130.3208, 54.3150),xytext=(-129.3, 54.25),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
-		
-		#ax1.vlines(model_freqs[i],0,10000000,colors=c[i],linestyles='dashed',label=n+' ('+str(model_freqs[i])[:5]+' hr)')
-	#leg1 = ax1.legend(loc='center left', bbox_to_anchor=(1, 0.35), title='Constituents ($T$)')
-	
-	'''
-	#getting the frequencies of potential other high-energy constituents
-	missing_constituents = ['Eps2','M11','M12','MNS2','M13','2MS2']
-	missing_freqs = []
-	for i,c in enumerate(missing_constituents):
-		id = all_constituents.index(c)
-		missing_freqs.append(1/(all_freqs[id]*3600/(2*3.14159265359)))
-	c = plt.cm.viridis(np.linspace(0, 1, 6))
-	for i,n in enumerate(missing_constituents): #plotting vertical lines at the 8 model constituents
-		ax1.vlines(missing_freqs[i],0,10000000,colors=c[i],linestyles='dashed',label=n+' ('+str(missing_freqs[i])[:5]+' hr)')
-	'''
+	fig,ax1 = plt.subplots(figsize=(8,4)) 
 
 	#getting PSD of the tidal signals
 	obs_f, obs_pxx = signal.periodogram(obs_df)
-	grc100_f, grc100_pxx = signal.periodogram(grc100_da)
+	if grc100_da is not None: grc100_f, grc100_pxx = signal.periodogram(grc100_da)
 	kit500_f, kit500_pxx = signal.periodogram(kit500_da)	
 	if subset_obs_df is not None: 
 		subset_obs_f, subset_obs_pxx = signal.periodogram(subset_obs_df)
 
 	'''
 	#removing all tidal constituent frequencies to see what happens
+	#would need to rearrange things if you want to uncomment this
 	for i,n in enumerate(all_freqs):
 		freq = n*3600/(2*3.14159265359) #getting the frequency in hr^-1 (which is the PSD unit)
 		min_freqs = list(np.absolute(obs_f-freq)) #list of the differences between the PSD freqs and the const freq
@@ -424,21 +457,80 @@ def plot_periodogram(obs_df,grc100_da,kit500_da,location):
 	'''
 	
 	#plotting the PSDd
-	c1, c2, c3, c4 = plt.cm.viridis([0, 0.33, 0.66, 1])
+	c1, c2, c3 = plt.cm.viridis([0, 0.5, 0.8])
 	l1, = ax1.semilogy(1/obs_f[1:],obs_pxx[1:],c=c1,label='Tide gauge') #plot the data 
-	l2, = ax1.semilogy(1/grc100_f[1:],grc100_pxx[1:],c=c2,label='grc100') #plot the data 
+	if grc100_da is not None: l2, = ax1.semilogy(1/grc100_f[1:],grc100_pxx[1:],c=c2,label='grc100') #plot the data 
 	l3, = ax1.semilogy(1/kit500_f[1:],kit500_pxx[1:],c=c3,label='kit500') #plot the data 
-	if subset_obs_df is not None: 
-		l4, = ax1.semilogy(1/subset_obs_f[1:],subset_obs_pxx[1:],c=c4,label='Tide gauge - rebuilt signal') #plot the data 
-		ax1.legend([l1,l2,l3,l4],['Tide gauge','grc100','kit500','Tide gauge - rebuilt signal'],loc='center left', bbox_to_anchor=(1, 0.8), title='Power spectra')
-	else:
-		ax1.legend([l1,l2,l3],['Tide gauge','grc100','kit500'],loc='center left', bbox_to_anchor=(1, 0.5), title='Power spectra') # bbox_to_anchor=(1, 0.8) IF INCLUDING A SECOND LEGEND
+	if subset_obs_df is not None: l4, = ax1.semilogy(1/subset_obs_f[1:],subset_obs_pxx[1:],c='black',alpha=0.6,label='Tide gauge - rebuilt signal') #plot the data 
+	ax1.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
+	#== hard coding for the presentation: getting the frequencies of the constituents and annotating a subset of them ===#
+	'''
+	wt=pytide.WaveTable()
+	all_constituents = wt.constituents()
+	all_freqs = wt.freq()
+	subset_constituents = ['M2', 'K1', 'N2', 'S2', 'O1', 'P1', 'Q1', 'K2', 'Eps2','M11','M12','MNS2','M13','2MS2','Mu2','MO3','2MK3']
+	subset_freqs = []
+	for i,c in enumerate(subset_constituents): #getting the frequency/period of the subset of constituents that we're interested in
+		id = all_constituents.index(c)
+		subset_freqs.append(all_freqs[id]*3600/(2*3.14159265359)) #freq in hr^-1
+	subset_pwr = []
+	for i,f in enumerate(subset_freqs): #getting the power density of the constituents
+		closest_freqs = [abs(obs_freq-f) for obs_freq in obs_f]
+		id = closest_freqs.index(min(closest_freqs))
+		subset_pwr.append(obs_pxx[id])
+	c = plt.cm.viridis(np.linspace(0, 1, 8))
+	for i,n in enumerate(subset_constituents): #plotting vertical lines at the 8 model constituents
+		if i < 9: ax1.plot(1/subset_freqs[i], subset_pwr[i], 'o', color='black')
+		else: ax1.plot(1/subset_freqs[i], subset_pwr[i], 'o', color='orange')
+	'''
+
+	#== hard(ish) coding this for presentation plots ==############################################################################
+	'''
+	def annotate_constituents(i,h,v,colour):
+		ax1.annotate(subset_constituents[i], xy=(1/subset_freqs[i], subset_pwr[i]),
+				xytext=(1/subset_freqs[i]+h, subset_pwr[i]+v),
+				arrowprops=dict(color=colour, shrink=0.05, width=1, headwidth=5, headlength=6), 
+				ha='right', 
+				va='center')
+	annotate_constituents(0,3,0,'black') #M2
+	annotate_constituents(1,-2,0,'black') #K1
+	annotate_constituents(2,3,5000,'black') #N2
+	annotate_constituents(3,-2,0,'black') #S2
+	annotate_constituents(4,3,0,'black') #O1
+	annotate_constituents(5,-2,0,'black') #P1
+	annotate_constituents(6,3,0,'black') #Q1
+	annotate_constituents(7,-2,0,'black') #K2
+	annotate_constituents(8,3,-650,'orange') #Eps2 
+	annotate_constituents(9,3,0,'orange') #M11
+	annotate_constituents(10,-2,0,'orange') #M12
+	annotate_constituents(11,3.5,1000,'orange') #MNS2
+	annotate_constituents(12,-2,0,'orange') #M13
+	annotate_constituents(13,3,-150,'orange') #2MS2
+	annotate_constituents(14,3,-235,'orange') #Mu2
+	annotate_constituents(15,-2,1000,'orange') #MO3
+	annotate_constituents(16,3,-300,'orange') #2MK3
+	'''
+	'''
+	wt=pytide.WaveTable()
+	all_constituents = wt.constituents()
+	all_freqs = wt.freq()
+	all_freqs = [f*3600/(2*3.14159265359) for f in all_freqs]
+	constituents_pwr = []
+	for i,f in enumerate(all_freqs): #getting the power density of the constituents
+		closest_freqs = [abs(obs_freq-f) for obs_freq in obs_f]
+		id = closest_freqs.index(min(closest_freqs))
+		constituents_pwr.append(obs_pxx[id])
+	constituents_df = pd.DataFrame({'PD': constituents_pwr},index=list(all_constituents))
+	constituents_df.sort_values(by=['PD']).to_csv('CSVs/constituent_PD_'+location+'.csv')
+	'''
+	#=============================================================================================================#
+	
 	#dictionary of plot titles
 	plot_titles = {
-		'Prince_Rupert': 'Prince Rupert tidal power spectra\nmodelling vs observations',
-		'Hartley_Bay': 'Hartley Bay tidal power spectra\nmodelling vs observations',
-		'Lowe_Inlet': 'Lowe Inlet tidal power spectra\nmodelling vs observations'}
+		'Prince_Rupert': 'Prince Rupert tidal power spectra\nmodels vs observations',
+		'Hartley_Bay': 'Hartley Bay tidal power spectra\nmodels vs observations',
+		'Lowe_Inlet': 'Lowe Inlet tidal power spectra\nmodels vs observations'}
 
 	#standard plotting params
 	plt.title(plot_titles[location])
@@ -446,32 +538,35 @@ def plot_periodogram(obs_df,grc100_da,kit500_da,location):
 	ax1.set_xlabel('Period ($hr$)')# ($hr^{-1}$)')
 	ax1.set_xlim(2,30) #set xlims for aesthetics (30 hrs)
 	ax1.set_ylim(0.000001,100000)
-	#ax1.add_artist(leg1)
-	fig.savefig('tidal_figures/ps_'+location+'_with_rebuilt_obs.png',dpi=300, bbox_inches="tight")
+	fig.savefig('tidal_figures/ps_'+location+'_incl_rebuilt_signal.png',dpi=300, bbox_inches="tight")
 	fig.clf()
 
 if __name__ == "__main__":
 
 	#== this section is for looking at the power spectra ==#
 	'''
-	locations=['Prince_Rupert','Lowe_Inlet','Hartley_Bay']
+	locations=['Lowe_Inlet']#,'Prince_Rupert','Hartley_Bay']
 	obs_df = get_tide_gauge_obs()
 	obs_df = tide_gauge_rebuilt_signal(obs_df)
-	yearmonth='202006'
+	yearmonth='202006' #should eventually extend this to the full series?
 	for location in locations:
 		kit500_xy = find_nearest_model_ids(location,'kit500')
 		kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
-		grc100_xy = find_nearest_model_ids(location,'grc100')
-		grc100_da = model_tidal_signal(grc100_xy,'grc100',yearmonth)
-		plot_periodogram(obs_df,grc100_da,kit500_da,location)
+		if location != 'Prince_Rupert':
+			grc100_xy = find_nearest_model_ids(location,'grc100')
+			grc100_da = model_tidal_signal(grc100_xy,'grc100',yearmonth)
+			plot_periodogram(obs_df,kit500_da,location,grc100_da=grc100_da)
+		else:
+			plot_periodogram(obs_df,kit500_da,location)
 	'''
 
 	#== this section is for harmonic analysis and plotting constituents on the obs data ==#
 	'''
 	yearmonth='202006'
-	location = 'Lowe_Inlet'
+	locations = ['Lowe_Inlet','Prince_Rupert','Hartley_Bay']
 	obs_df = get_tide_gauge_obs()
-	observations_harmonic_analysis_plots(obs_df,yearmonth,location)
+	for location in locations:
+		observations_harmonic_analysis_plots(obs_df,yearmonth,location)
 	'''
 
 	#== this section is for harmonic analysis on the model data ==# 
@@ -508,18 +603,17 @@ if __name__ == "__main__":
 	'''
 
 	#== and this section is for making plots of ssh ==#
-	
+	'''
 	yearmonth='202101'
 	obs_df = get_tide_gauge_obs()
-	obs_df = tide_gauge_rebuilt_signal(obs_df) #can optionally comment this out, if you don't want the rebuilt obs
-
+	
 	location = 'Lowe_Inlet'
 	kit500_xy = find_nearest_model_ids(location,'kit500')
 	grc100_xy = find_nearest_model_ids(location,'grc100')
 	kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
 	grc100_da = model_tidal_signal(grc100_xy,'grc100',yearmonth)
 	tide_plotting(obs_df,location,yearmonth,kit500_da,'kit500',model2_da=grc100_da,model2='grc100')
-	'''
+	
 	location = 'Hartley_Bay'
 	kit500_xy = find_nearest_model_ids(location,'kit500')
 	grc100_xy = find_nearest_model_ids(location,'grc100')
@@ -532,4 +626,15 @@ if __name__ == "__main__":
 	kit500_da = model_tidal_signal(kit500_xy,'kit500',yearmonth)
 	tide_plotting(obs_df,location,yearmonth,kit500_da,'kit500')
 	'''
+
+	#== this section is pretty hard coded (FIX THIS); plots rebuilt tide water signals ==#
+
+	yearmonth='202101'
+	location = 'Lowe_Inlet'
+	obs_df = get_tide_gauge_obs()
+	obs_df = tide_gauge_rebuilt_signal(obs_df,num_const=8) #can optionally comment this out, if you don't want the rebuilt obs
+	obs_df = tide_gauge_rebuilt_signal(obs_df,num_const=12) #can optionally comment this out, if you don't want the rebuilt obs
+	obs_df = tide_gauge_rebuilt_signal(obs_df,num_const=17) #can optionally comment this out, if you don't want the rebuilt obs
+	obs_df = tide_gauge_rebuilt_signal(obs_df,num_const=26) #can optionally comment this out, if you don't want the rebuilt obs
+	obs_plotting_with_rebuilt_signals(obs_df,location,yearmonth)
 	
