@@ -68,6 +68,7 @@ def mesh_map():
 
 		transform = ccrs.PlateCarree()._as_mpl_transform(ax)
 		
+		#== including annotations for tide gauges ==#
 		'''
 		ax.plot(-129.2535, 53.4329, 'o', color='black', transform=ccrs.PlateCarree())
 		ax.plot(-129.2535, 53.4329, '.', color='white', transform=ccrs.PlateCarree())
@@ -81,7 +82,12 @@ def mesh_map():
 		ax.annotate('Hartley\nBay', xy=(-129.2535, 53.4329),xytext=(-128.75, 53),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
 		ax.annotate('Lowe Inlet', xy=(-129.5799, 53.5553),xytext=(-128.75, 53.75),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
 		ax.annotate('Prince Rupert', xy=(-130.3208, 54.3150),xytext=(-129.3, 54.25),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='left', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
-		''' 
+		'''
+
+		#== annotation for the mooring ==#
+		ax.plot(-129.617236666667, 53.545945, 'o', color='black', transform=ccrs.PlateCarree())
+		ax.plot(-129.617236666667, 53.545945, '.', color='white', transform=ccrs.PlateCarree())
+		ax.annotate('Mooring', xy=(-129.617236666667, 53.545945),xytext=(-130.25, 53.2),arrowprops=dict(facecolor='white', shrink=0.05, width=2.5, headwidth=5, headlength=6), xycoords=transform, ha='right', va='center',bbox=dict(facecolor="white", edgecolor="black", boxstyle="round"),**{'backgroundcolor':'white','fontsize':'small'})#transform=ccrs.PlateCarree())#, zorder=12)
 		
 		#title
 		ax.set_title(mesh)
@@ -90,7 +96,7 @@ def mesh_map():
 	fig.suptitle('Comparing mesh sizes around Grenville Channel',y=0.975)
 
 	#save and close figure
-	plt.savefig('maps/meshes' + '_map.png',dpi=300, bbox_inches="tight")
+	plt.savefig('maps/meshes' + '_map_with_ADCPs.png',dpi=300, bbox_inches="tight")
 	plt.clf()
 
 	print('done')
