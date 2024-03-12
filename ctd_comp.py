@@ -31,6 +31,8 @@ for c in ctd_files:
     print(lat)
     print(lon)
 
+    df = df.swap_dims({"z": "depth"})
+
     y = df['time'].dt.year.values
     m = df['time'].dt.month.values
     d = df['time'].dt.day.values
@@ -98,7 +100,7 @@ for c in ctd_files:
     kit_profile[0].plot(y='deptht', label='kit500')
     
     #and now add the ctd cast profile
-    df['sea_water_practical_salinity'].plot(y='z', label='ctd')
+    df['sea_water_practical_salinity'].plot(y='depth', label='ctd')
     plt.gca().invert_yaxis()
     plt.title("Salinity profile at lon: "+str(lon)+", lat: "+str(lat)+" on "+t.strftime('%d/%m/%Y'))
     plt.legend()
