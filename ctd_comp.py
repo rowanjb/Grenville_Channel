@@ -1,3 +1,8 @@
+"""
+Author: Tahya Weiss-Gibbons, March 2023
+
+Plots the temperature and salinity profiles from ctd casts, compared with model output
+"""
 import os
 import glob
 import difflib
