@@ -49,7 +49,7 @@ def open_ADCP_current(depth='Full'):
     which_adcp permits choice of the 'upper' or 'lower' unit.
     Returns dataframe of the current velocity observations.'''
     print('ADCP current velocity data has been opened')
-    if depth=='Full':
+    if (depth=='Full') | (depth=='Full_column'):
         obs_path = '/mnt/storage3/tahya/DFO/Observations/GRC1_Mooring_Data/ADCP/grc1_20190808_20200801_0089m.adcp.L1.nc'
         print('Velocities are coming from the lower ADCP')
     elif float(depth) > 25:
@@ -70,10 +70,13 @@ def open_ADCP_current(depth='Full'):
     
     if depth=='Full':
         ds = ds.mean(dim='distance',skipna=True).dropna(dim='time')
-        print('Model x and y velocities calculated and averaged in the water column')
+        print('ADCP velocities calculated and averaged in the water column')
+    if depth=='Full_column':
+        ds = ds.dropna(dim='time')
+        print('ADCP velocities through the water column have been output')
     else:
         ds = ds.sel(distance=float(depth),method='nearest').dropna(dim='time').drop_vars('distance')
-        print('Model x and y velocities calculated indexed nearest '+str(depth)+' m')
+        print('ADCP velocities calculated indexed nearest '+str(depth)+' m')
     
     print('ADCP ssh data has been opened')
     return ds
@@ -116,7 +119,7 @@ def model_ssh_signal(model_xy,model):
     model is either 'grc100' or 'kit500'.
     Returns a dataarray containing the timeseries ssh data.'''
     start_date = datetime(2019,6,1) # Rough starting date of the Hartley Bay and Prince Rupert data
-    end_date = datetime(2023,1,1)
+    end_date = datetime(2024,1,1) #APRIL 3 NOTE: DATE UPDATED TO MATCH WEATHER STATION
     model_fp_txt = 'filepaths/' + model + '_filepaths_1h_grid_T_2D.csv'
     fps = list(pd.read_csv(model_fp_txt))
     dates = [datetime(int(fp[-39:-35]),int(fp[-35:-33]),int(fp[-33:-31])) for fp in fps]
@@ -183,7 +186,7 @@ def model_current(model_xy,model,depth='Full'):
     ds = ds.assign_coords(nav_lon=mesh.nav_lon.sel(x=model_xy[0][0], y=model_xy[1][0]))
     
     if depth=='Full':
-        #ds = ds.where(mesh.tmask.sel(x=model_xy[0], y=model_xy[1]).isel(t=0)==1,drop=True) # Masking below seafloor
+        ds = ds.where(mesh.tmask.sel(x=model_xy[0], y=model_xy[1]).isel(t=0)==1,drop=True) # Masking below seafloor
         weights = ds.d
         weights.name = "weights"
         uo_weighted = ds.uo.weighted(weights)
@@ -192,6 +195,10 @@ def model_current(model_xy,model,depth='Full'):
         ds['vo'] = vo_weighted.mean('d')
         ds = ds.isel({'x':0,'y':0}).drop_vars('d')
         print('Model x and y velocities calculated and averaged in the water column')
+    elif depth=='Full_column':
+        ds = ds.where(mesh.tmask.sel(x=model_xy[0], y=model_xy[1]).isel(t=0)==1,drop=True) # Masking below seafloor
+        ds = ds.isel({'x':0,'y':0})
+        print('Model x and y velocities calculated')
     else:
         ds = ds.sel(d=float(depth),method='nearest').isel({'x':0,'y':0})
         print('Model x and y velocities calculated indexed nearest '+str(depth)+' m')
@@ -238,6 +245,25 @@ def extend_Lowe_Inlet_utide(obs_df):
     print('Lowe Inlet tidal observations have been extended forward using utide')
     return obs_df_new
 
+def extend_SSH_obs_2023(obs_df,location):
+    '''Extends an SSH signal to match the period from the Tom Island weather station.
+    This uses the utide package.
+    obs_df is the raw data from DFO.
+    Returns the dataframe with but with updated dates.'''
+    start_date = datetime(2023,1,1) # Rough starting date of the weather station
+    end_date = datetime(2023,12,31) # and the rough end date
+    date_nparr = date_range(start_date,end_date) # Getting list of hourly datetime objs between the start and end dates
+    obs_coords = {                                              #Coords from Google:
+        'Hartley_Bay': {'lat': 53.424213, 'lon': -129.251877}, 	#53.4239N 129.2535W 
+        'Lowe_Inlet': {'lat': 53.55, 'lon': -129.583333},		#53.5564N 129.5875W 
+        'ADCP': {'lat': 53.545945, 'lon': -129.617236666667}}
+    obs_df['h'] = obs_df['h'] - obs_df['h'].mean()
+    coef = solve(obs_df['date'].to_numpy(),obs_df['h'].to_numpy(),lat=obs_coords[location]['lat'],method="ols",conf_int="MC",verbose=False)
+    tide = reconstruct(date_nparr, coef, verbose=False)
+    obs_df_new = pd.DataFrame({'date': date_nparr, 'h': tide['h']})
+    print(location + ' SSH observations have been extended forward using utide')
+    return obs_df_new
+
 def ssh_error(obs_fp,model_fp):
     '''Calculates the timeseries of error between an observation timeseries
     and a model timeseries.
@@ -255,7 +281,8 @@ def ssh_error(obs_fp,model_fp):
     idx = obs_df.index.intersection(model_df.index) # Find the common indices 
     ssh = obs_df.loc[idx].rename(columns={'h':'obs_h'}) # Create a final dataframe based on the obs h
     ssh['model_h'] = model_df.loc[idx]              # Add col for the mdel h
-    ssh['abs_err'] = np.abs(ssh['obs_h'] - ssh['model_h']) # Add col for the abs(error)
+    ssh['difference'] = ssh['obs_h'] - ssh['model_h']
+    ssh['abs_err'] = np.abs(ssh['difference']) # Add col for the abs(error)
     return ssh    
 
 def vel_error(obs_fp,model_fp):
@@ -308,8 +335,8 @@ def weather_station():
     print('Outputting the processed weather station data')
     return wind, pressure
 
-def save_ssh_data(which_data):
-    '''Saves the observation and/or model ssh data.
+def save_tide_data(which_data):
+    '''Saves the observation and/or model ssh data (or velocity data).
     which_data specifies the location and whether you want obs, model, etc.
     Observations are saved as CSVs.
     Model data are saved as netcdfs.'''
@@ -321,6 +348,9 @@ def save_ssh_data(which_data):
     elif which_data == 'Prince_Rupert_tide_gauge':
         obs_df = open_tide_gauge('Prince_Rupert')
         obs_df.to_csv('processed_data/SSH_Prince_Rupert_gauge.csv',index=False)
+    elif which_data == 'Lowe_Inlet_tide_gauge':
+        obs_df = open_tide_gauge('Lowe_Inlet')
+        obs_df.to_csv('processed_data/SSH_Lowe_Inlet_gauge.csv',index=False)
     elif which_data == 'Lowe_Inlet_tide_gauge_pytide':
         obs_df = open_tide_gauge('Lowe_Inlet')
         obs_df = extend_Lowe_Inlet_pytide(obs_df)
@@ -366,12 +396,12 @@ def save_ssh_data(which_data):
     elif which_data == 'ADCP_grc100_velocity':
         print("Note: we're looking at the average vel in the water column (can change manually; ensure you also change the err save fp)")
         model_xy = get_nearest_model_id('ADCP','grc100')
-        model_ds = model_current(model_xy,'grc100',depth='Full')
-        model_ds.to_netcdf('processed_data/velocities_grc100_ADCP.nc')
+        model_ds = model_current(model_xy,'grc100',depth='Full_column')
+        model_ds.to_netcdf('processed_data/velocities_grc100_ADCP_full_column.nc')
     elif which_data == 'ADCP_velocity':
         print("Note: we're looking at the average vel in the water column (can change manually; ensure you also change the err save fp)")
-        obs_ds = open_ADCP_current(depth='Full') 
-        obs_ds.to_netcdf('processed_data/velocities_ADCP.nc')
+        obs_ds = open_ADCP_current(depth='Full_column') 
+        obs_ds.to_netcdf('processed_data/velocities_ADCP_full_column.nc')
     elif which_data == 'Channel_Inlet_grc100_SSH':
         model_xy = get_nearest_model_id('Channel_Inlet','grc100')
         model_da = model_ssh_signal(model_xy,'grc100')
@@ -388,6 +418,18 @@ def save_ssh_data(which_data):
         model_xy = get_nearest_model_id('Channel_Outlet','kit500')
         model_da = model_ssh_signal(model_xy,'kit500')
         model_da.to_netcdf('processed_data/SSH_kit500_channel_outlet.nc') 
+    elif which_data == 'Lowe_Inlet_extension_2023':
+        obs_df = open_tide_gauge('Lowe_Inlet')
+        obs_df = extend_SSH_obs_2023(obs_df,'Lowe_Inlet')
+        obs_df.to_csv('processed_data/SSH_Lowe_Inlet_2023.csv',index=False)
+    elif which_data == 'Hartley_Bay_extension_2023':
+        obs_df = open_tide_gauge('Hartley_Bay')
+        obs_df = extend_SSH_obs_2023(obs_df,'Hartley_Bay')
+        obs_df.to_csv('processed_data/SSH_Hartley_Bay_2023.csv',index=False)
+    elif which_data == 'ADCP_extension_2023':
+        obs_df = open_ADCP_ssh('lower')
+        obs_df = extend_SSH_obs_2023(obs_df,'ADCP')
+        obs_df.to_csv('processed_data/SSH_ADCP_lower_2023.csv',index=False)
     else:
         'Bad choice of data!'
         quit()
@@ -398,52 +440,77 @@ def save_err_data(which_data):
     which_data specifies the data series, location, and type (i.e., ssh vs vel)
     Error is saved as a csv, probably.'''
 
-    print("We're looking at the following error :" + which_data)
+    print("We're looking at the following error: " + which_data)
     if which_data=='Hartley_Bay_grc100_SSH':
         obs_fp = 'processed_data/SSH_Hartley_Bay_gauge.csv'
         model_fp = 'processed_data/SSH_grc100_Hartley_Bay.nc'
         err_df = ssh_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/SSH_err_Hartley_Bay_grc100.csv',index=False)
+        err_df.to_csv('processed_data/SSH_err_Hartley_Bay_grc100.csv')
     if which_data=='Lowe_Inlet_pytide_grc100_SSH':
         obs_fp = 'processed_data/SSH_Lowe_Inlet_pytide.csv'
         model_fp = 'processed_data/SSH_grc100_Lowe_Inlet.nc'
         err_df = ssh_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_pytide_grc100.csv',index=False)
+        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_pytide_grc100.csv')
     if which_data=='Lowe_Inlet_utide_grc100_SSH':
         obs_fp = 'processed_data/SSH_Lowe_Inlet_utide.csv'
         model_fp = 'processed_data/SSH_grc100_Lowe_Inlet.nc'
         err_df = ssh_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_utide_grc100.csv',index=False)
+        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_utide_grc100.csv')
     if which_data=='Hartley_Bay_kit500_SSH':
         obs_fp = 'processed_data/SSH_Hartley_Bay_gauge.csv'
         model_fp = 'processed_data/SSH_kit500_Hartley_Bay.nc'
         err_df = ssh_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/SSH_err_Hartley_Bay_kit500.csv',index=False)
+        err_df.to_csv('processed_data/SSH_err_Hartley_Bay_kit500.csv')
     if which_data=='Prince_Rupert_kit500_SSH':
         obs_fp = 'processed_data/SSH_Prince_Rupert_gauge.csv'
         model_fp = 'processed_data/SSH_kit500_Prince_Rupert.nc'
         err_df = ssh_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/SSH_err_Prince_Rupert_kit500.csv',index=False)
+        err_df.to_csv('processed_data/SSH_err_Prince_Rupert_kit500.csv')
     if which_data=='Lowe_Inlet_pytide_kit500_SSH':
         obs_fp = 'processed_data/SSH_Lowe_Inlet_pytide.csv'
         model_fp = 'processed_data/SSH_kit500_Lowe_Inlet.nc'
         err_df = ssh_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_pytide_kit500.csv',index=False)
+        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_pytide_kit500.csv')
     if which_data=='Lowe_Inlet_utide_kit500_SSH':
         obs_fp = 'processed_data/SSH_Lowe_Inlet_utide.csv'
         model_fp = 'processed_data/SSH_kit500_Lowe_Inlet.nc'
         err_df = ssh_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_utide_kit500.csv',index=False)
+        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_utide_kit500.csv')
+    if which_data=='ADCP_kit500_SSH':
+        obs_fp = 'processed_data/SSH_ADCP_lower.csv'
+        model_fp = 'processed_data/SSH_kit500_ADCP.nc'
+        err_df = ssh_error(obs_fp,model_fp)
+        err_df.to_csv('processed_data/SSH_err_ADCP_lower_kit500.csv')
+    if which_data=='ADCP_grc100_SSH':
+        obs_fp = 'processed_data/SSH_ADCP_lower.csv'
+        model_fp = 'processed_data/SSH_grc100_ADCP.nc'
+        err_df = ssh_error(obs_fp,model_fp)
+        err_df.to_csv('processed_data/SSH_err_ADCP_lower_grc100.csv')
     if which_data=='ADCP_full':
         obs_fp = 'processed_data/velocities_ADCP.nc'
         model_fp = 'processed_data/velocities_grc100_ADCP.nc'
         err_df = vel_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/velocities_err_grc100.csv',index=False)
+        err_df.to_csv('processed_data/velocities_err_grc100.csv')
     if which_data=='ADCP_8.4':
         obs_fp = 'processed_data/velocities_ADCP_8.4m.nc'
         model_fp = 'processed_data/velocities_grc100_ADCP_8.4m.nc'
         err_df = vel_error(obs_fp,model_fp)
-        err_df.to_csv('processed_data/velocities_err_grc100_8.4m.csv',index=False)
+        err_df.to_csv('processed_data/velocities_err_grc100_8.4m.csv')
+    if which_data=='ADCP_grc100_SSH_2023':
+        obs_fp = 'processed_data/SSH_ADCP_lower_2023.csv'
+        model_fp = 'processed_data/SSH_grc100_ADCP.nc'
+        err_df = ssh_error(obs_fp,model_fp)
+        err_df.to_csv('processed_data/SSH_err_ADCP_grc100_2023.csv')
+    if which_data=='Hartley_Bay_grc100_SSH_2023':
+        obs_fp = 'processed_data/SSH_Hartley_Bay_2023.csv'
+        model_fp = 'processed_data/SSH_grc100_Hartley_Bay.nc'
+        err_df = ssh_error(obs_fp,model_fp)
+        err_df.to_csv('processed_data/SSH_err_Hartley_Bay_grc100_2023.csv')
+    if which_data=='Lowe_Inlet_grc100_SSH_2023':
+        obs_fp = 'processed_data/SSH_Lowe_Inlet_2023.csv'
+        model_fp = 'processed_data/SSH_grc100_Lowe_Inlet.nc'
+        err_df = ssh_error(obs_fp,model_fp)
+        err_df.to_csv('processed_data/SSH_err_Lowe_Inlet_grc100_2023.csv')
     else:
         'Bad choice of data!'
     print(which_data+' error data have been saved')
@@ -451,25 +518,29 @@ def save_err_data(which_data):
 if __name__ == '__main__':
 
     #== SSH data ==#
-    #save_ssh_data('Hartley_Bay_tide_gauge')
-    #save_ssh_data('Prince_Rupert_tide_gauge')
-    #save_ssh_data('Lowe_Inlet_tide_gauge_pytide')
-    #save_ssh_data('Lowe_Inlet_tide_gauge_utide')
-    #save_ssh_data('ADCP_upper_SSH')
-    #save_ssh_data('ADCP_lower_SSH')
-    #save_ssh_data('Prince_Rupert_kit500_SSH')
-    #save_ssh_data('Hartley_Bay_kit500_SSH')
-    #save_ssh_data('Lowe_Inlet_kit500_SSH')
-    #save_ssh_data('ADCP_kit500_SSH')
-    #save_ssh_data('Hartley_Bay_grc100_SSH')
-    #save_ssh_data('Lowe_Inlet_grc100_SSH')
-    #save_ssh_data('ADCP_grc100_SSH')
-    #save_ssh_data('ADCP_grc100_velocity')
-    #save_ssh_data('ADCP_velocity')
-    #save_ssh_data('Channel_Inlet_grc100_SSH')
-    #save_ssh_data('Channel_Outlet_grc100_SSH')
-    #save_ssh_data('Channel_Inlet_kit500_SSH')
-    #save_ssh_data('Channel_Outlet_kit500_SSH')
+    #save_tide_data('Hartley_Bay_tide_gauge')
+    #save_tide_data('Prince_Rupert_tide_gauge')
+    #save_tide_data('Lowe_Inlet_tide_gauge')
+    #save_tide_data('Lowe_Inlet_tide_gauge_pytide')
+    #save_tide_data('Lowe_Inlet_tide_gauge_utide')
+    #save_tide_data('ADCP_upper_SSH')
+    #save_tide_data('ADCP_lower_SSH')
+    #save_tide_data('Prince_Rupert_kit500_SSH')
+    #save_tide_data('Hartley_Bay_kit500_SSH')
+    #save_tide_data('Lowe_Inlet_kit500_SSH')
+    #save_tide_data('ADCP_kit500_SSH')
+    #save_tide_data('Hartley_Bay_grc100_SSH')
+    #save_tide_data('Lowe_Inlet_grc100_SSH')
+    #save_tide_data('ADCP_grc100_SSH')
+    #save_tide_data('ADCP_grc100_velocity')
+    #save_tide_data('ADCP_velocity')
+    #save_tide_data('Channel_Inlet_grc100_SSH')
+    #save_tide_data('Channel_Outlet_grc100_SSH')
+    #save_tide_data('Channel_Inlet_kit500_SSH')
+    #save_tide_data('Channel_Outlet_kit500_SSH')
+    #save_tide_data('Lowe_Inlet_extension_2023')
+    #save_tide_data('Hartley_Bay_extension_2023')
+    #save_tide_data('ADCP_extension_2023')
 
     #== Error data ==#
     #save_err_data('Hartley_Bay_grc100_SSH')
@@ -479,10 +550,18 @@ if __name__ == '__main__':
     #save_err_data('Prince_Rupert_kit500_SSH')
     #save_err_data('Lowe_Inlet_pytide_kit500_SSH')
     #save_err_data('Lowe_Inlet_utide_kit500_SSH')
+    #save_err_data('ADCP_kit500_SSH')
+    #save_err_data('ADCP_grc100_SSH')
     #save_err_data('ADCP_full')
     #save_err_data('ADCP_8.4')
+    #save_err_data('Lowe_Inlet_grc100_SSH_2023')
+    #save_err_data('Hartley_Bay_grc100_SSH_2023')
+    #save_err_data('ADCP_grc100_SSH_2023')
 
     #== Weather station ==#
-    wind, pressure = weather_station()
-    wind.to_csv('processed_data/weather_station_wind.csv')
-    pressure.to_csv('processed_data/weather_station_pressure.csv')
+    #wind, pressure = weather_station()
+    #wind.to_csv('processed_data/weather_station_wind.csv')
+    #pressure.to_csv('processed_data/weather_station_pressure.csv')
+
+    #ds = xr.open_dataset('processed_data/velocities_grc100_ADCP_full_column.nc')
+    #print(ds)
