@@ -1,9 +1,3 @@
-"""
-Author: Tahya Weiss-Gibbons, March 2024
-
-Takes temperature and salinity measurements from the mooring ctd and compares with the closest model point
-Makes a timeseries of the output
-"""
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -16,9 +10,9 @@ def closest_grid(nav_lon, nav_lat, lon, lat):
     c = (abslon**2 + abslat**2)**0.5
     return np.where(c == np.min(c))
 
-ctd_file = '/mnt/storage3/tahya/DFO/Observations/GRC1_Mooring_Data/CTD/grc1_20190808_20200801_0085m_L2.ctd.nc'
+ctd_file = '/mnt/storage3/tahya/DFO/Observations/GRC1_Mooring_Data/CTD/grc1_20190809_20200801_0020m_L2.ctd.nc'
 
-cf = xr.open_dataset(ctd_file, chunks={'time': 100})
+cf = xr.open_dataset(ctd_file, chunks={'time': 50})
 
 print(cf)
 
@@ -30,7 +24,7 @@ cf['sea_water_temperature'].plot(label='ctd')
 grc_filepaths_txt = 'filepaths/' + 'grc100_filepaths_1h_grid_T.csv'
 grc_filepaths = list(pd.read_csv(grc_filepaths_txt))
 grc_filepaths.remove('/mnt/storage3/tahya/DFO/grc100_model_results/2019060100_000/NEMO_RPN_1h_grid_T.nc') #file is bad??
-gs = xr.open_mfdataset(grc_filepaths, concat_dim='time_counter', data_vars='minimal', coords='minimal', compat='override', chunks={'time_counter':100})
+gs = xr.open_mfdataset(grc_filepaths, chunks={'time_counter':50})
 
 print(gs)
 
@@ -50,9 +44,9 @@ print(avg_ctd_depth)
 temp_ts = temp_ts.sel(deptht=avg_ctd_depth, method='nearest')
 print(temp_ts)
 
-temp_ts.plot(label='grc100')
+temp_ts[:].plot(label='grc100')
 plt.legend()
-plt.savefig('figs/mooring_temp.png')
+plt.savefig('figs/mooring_20m_temp.png')
 
 cf.close()
 gs.close()
